@@ -24,7 +24,6 @@ void perror(const char *s);
 /* Manifest constants used by client program */
 #define MAX_HOSTNAME_LENGTH 64
 #define MAX_WORD_LENGTH 100
-//#define BYNAME 1
 
 /* Menu selections */
 #define ALLDONE 0
@@ -34,7 +33,7 @@ void perror(const char *s);
 /* Prompt the user to enter a word */
 void printmenu()
 {
-    printf("\n");
+    printf("\n\n\n");
     printf("Please choose from the following selections:\n");
     printf("  1 - Devowel a message\n");
 	printf("  2 - Envowel a message\n");
@@ -47,35 +46,43 @@ int main()
   {
     int sockfd, sockfd2;
     char c;
-    struct sockaddr_in server;
+    struct sockaddr_in server, server1;
     struct hostent *hp;
     char hostname[MAX_HOSTNAME_LENGTH];
     char message[MAX_WORD_LENGTH];
     char messageback[MAX_WORD_LENGTH];
+	char messagebackUDP[MAX_WORD_LENGTH];
     int choice, len, bytes;
+	int UDPsocket;
+	
+	len = sizeof(server1);
 
     /* Initialization of server sockaddr data structure */
     memset(&server, 0, sizeof(server));
     server.sin_family = AF_INET;
     server.sin_port = htons(TCPPORTNUM);
     server.sin_addr.s_addr = htonl(INADDR_ANY);
+	
+	if((UDPsocket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) == -1)
+    {
+		fprintf(stderr, "ERROR: socket() call failed!\n");
+		exit(1);
+    }
+	
+	memset((char*) &server1, 0, sizeof(server1));
+    server1.sin_family = AF_INET;
+    server1.sin_port = htons(UDPPORTNUM);
+    server1.sin_addr.s_addr = htonl(INADDR_ANY);
+	
+	if(inet_pton(AF_INET, SERVER_IP, &server1.sin_addr)==0)
+	{
+		printf("inet_pton() failed!\n");
+		exit(1);
+	}
+	fprintf(stderr, "DEBUG\n");
 
-#ifdef BYNAME
-    /* use a resolver to get the IP address for a domain name */
-    /* I did my testing using csx1 (136.159.5.25)    Carey */
-    strcpy(hostname, "csx1.cpsc.ucalgary.ca");
-    hp = gethostbyname(hostname);
-    if (hp == NULL)
-      {
-	fprintf(stderr, "%s: unknown host\n", hostname);
-	exit(1);
-      }
-    /* copy the IP address into the sockaddr structure */
-    bcopy(hp->h_addr, &server.sin_addr, hp->h_length);
-#else
     /* hard code the IP address so you don't need hostname resolver */
-    server.sin_addr.s_addr = inet_addr("127.0.0.1");
-#endif
+    server.sin_addr.s_addr = inet_addr(SERVER_IP);
 
     /* create the client socket for its transport-level end point */
     if((sockfd = socket(PF_INET, SOCK_STREAM, 0)) == -1 )
@@ -100,6 +107,9 @@ int main()
     /* main loop: read a word, send to server, and print answer received */
     while(choice != ALLDONE )
     {
+		bzero(message, MAX_WORD_LENGTH);
+		bzero(messageback, MAX_WORD_LENGTH);
+		bzero(messagebackUDP, MAX_WORD_LENGTH);
 		if(choice == DEVOWEL )
 	    {
 			/* get rid of newline after the (integer) menu choice given */
@@ -118,18 +128,39 @@ int main()
 
 			/* send it to the server via the socket */
 			send(sockfd, message, len, 0);
+			
+			if(sendto(UDPsocket, message, strlen(message), 0, (struct sockaddr *)&server1, sizeof(server1)) == -1)
+			{
+				printf("ERROR: sendto() failed!\n");
+				exit(1);
+			}
 
 			/* see what the server sends back */
-			if((bytes = recv(sockfd, messageback, len, 0)) > 0 )
+			// &&
+			// recvfrom(UDPsocket, messagebackUDP, MAX_WORD_LENGTH, 0, (struct sockaddr *)&server1, &len)
+			if(((bytes = recv(sockfd, messageback, len, 0)) > 0))
 			{
 				/* make sure the message is null-terminated in C */
 				messageback[bytes] = '\0';
-				printf("Server sent %d bytes of non-vowels on TCP: '%s'", strlen(messageback), messageback);
+				printf("Server sent %d bytes of non-vowels on TCP: '%s'\n", strlen(messageback), messageback);
 			}
 			else
 			{
 				/* an error condition if the server dies unexpectedly */
-				printf("Sorry, dude. Server failed!\n");
+				printf("ERROR: Server failed!\n");
+				close(sockfd);
+				exit(1);
+			}
+			
+			if( recvfrom(UDPsocket, messagebackUDP, MAX_WORD_LENGTH, 0, (struct sockaddr *)&server1, &len) > 0)
+			{
+				messagebackUDP[bytes] = '\0';
+				printf("Server sent %d bytes of     vowels on UDP: '%s'", strlen(messagebackUDP), messagebackUDP);
+			}
+			else
+			{
+				/* an error condition if the server dies unexpectedly */
+				printf("ERROR: Server failed!\n");
 				close(sockfd);
 				exit(1);
 			}
@@ -138,7 +169,7 @@ int main()
 	  {
 		  
 	  }
-	  else printf("Invalid menu selection. Please try again.\n");
+	  else printf("ERROR: Invalid menu selection. Please try again.\n");
 
 	  printmenu();
 	  scanf("%d", &choice);

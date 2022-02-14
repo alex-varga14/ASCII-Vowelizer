@@ -8,7 +8,7 @@
 
 /* Global manifest constants */
 #define MAX_MESSAGE_LENGTH 100
-#define TCP_PORT 44144         
+#define TCP_PORT 44144    
 #define UDP_PORT 44144
 #define SIMPLE 1
 
@@ -18,6 +18,9 @@
 /* Global variable */
 int childsockfd;
 
+char UDPmessagein[MAX_MESSAGE_LENGTH];
+int vindex = 0;
+
 /* This is a signal handler to do graceful exit if needed */
 void catcher( int sig )
 {
@@ -25,20 +28,23 @@ void catcher( int sig )
     exit(0);
 }
   
-void devowel(char* message);
+void devowelTCP(char* message);
+void devowelUDP(char* message);
 void envowel(char* message);  
 
 /* Main program for server */
 int main()
   {
-    struct sockaddr_in server;
+    struct sockaddr_in TCPserver, UDPserver, client;
     static struct sigaction act;
-    char messagein[MAX_MESSAGE_LENGTH];
+    char TCPmessagein[MAX_MESSAGE_LENGTH];
     char TCPmessageout[MAX_MESSAGE_LENGTH];
 	char UDPmessageout[MAX_MESSAGE_LENGTH];
-    int parentsockfd;
+    int parentsockfd, UDPsocket;
     int i, len, bytes, answer;
     pid_t pid;
+	
+	len = sizeof(TCPserver);
 
     /* Set up a signal handler to catch some weird termination conditions. */
     act.sa_handler = catcher;
@@ -46,36 +52,59 @@ int main()
     sigaction(SIGPIPE, &act, NULL);
 
     /* Initialize server sockaddr structure */
-    memset(&server, 0, sizeof(server));
-    server.sin_family = AF_INET;
-    server.sin_port = htons(TCP_PORT);
-    server.sin_addr.s_addr = htonl(INADDR_ANY);
+    memset(&TCPserver, 0, sizeof(TCPserver));
+    TCPserver.sin_family = AF_INET;
+    TCPserver.sin_port = htons(TCP_PORT);
+    TCPserver.sin_addr.s_addr = htonl(INADDR_ANY);
+	
+	/* Initialize server sockaddr structure */
+    memset((char*) &UDPserver, 0, sizeof(UDPserver));
+    UDPserver.sin_family = AF_INET;
+    UDPserver.sin_port = htons(UDP_PORT);
+    UDPserver.sin_addr.s_addr = htonl(INADDR_ANY);
+	
+	//fprintf(stderr, "DEBUG\n");
 
     /* create a transport-level endpoint using TCP */
     /* set up the transport-level end point to use TCP */
-    if((parentsockfd = socket(PF_INET, SOCK_STREAM, 0)) == -1 )
+    if((parentsockfd = socket(PF_INET, SOCK_STREAM, 0)) == -1)
     {
-		fprintf(stderr, "wordlen-TCPserver: socket() call failed!\n");
+		fprintf(stderr, "ERROR: socket() call failed!\n");
+		exit(1);
+    }
+	
+	if((UDPsocket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) == -1)
+    {
+		fprintf(stderr, "ERROR: socket() call failed!\n");
 		exit(1);
     }
 
     /* bind a specific address and port to the end point */
-    if( bind(parentsockfd, (struct sockaddr *)&server, sizeof(struct sockaddr_in) ) == -1 )
+    if(bind(parentsockfd, (struct sockaddr *) &TCPserver, sizeof(struct sockaddr_in)) == -1)
     {
 		fprintf(stderr, "ERROR: bind() call failed!\n");
 		exit(1);
     }
+	
+	/* bind a UDP */
+    if(bind(UDPsocket, (struct sockaddr *) &UDPserver, sizeof(UDPserver)) == -1)
+    {
+		fprintf(stderr, "ERROR: UDP bind() call failed!\n");
+		exit(1);
+    }
 
     /* start listening for incoming connections from clients */
-    if( listen(parentsockfd, 5) == -1 )
+    if(listen(parentsockfd, 5) == -1)
     {
 		fprintf(stderr, "ERROR: listen() call failed!\n");
 		exit(1);
     }
 
     /* initialize message strings just to be safe (null-terminated) */
-    bzero(messagein, MAX_MESSAGE_LENGTH);
+    bzero(TCPmessagein, MAX_MESSAGE_LENGTH);
+	bzero(UDPmessagein, MAX_MESSAGE_LENGTH);
     bzero(TCPmessageout, MAX_MESSAGE_LENGTH);
+	bzero(UDPmessageout, MAX_MESSAGE_LENGTH);
 
     fprintf(stderr, "Hello there! I am the vowelizer server!!\n");
     fprintf(stderr, "I am running on TCP port %d and UDP port %d...\n\n", TCP_PORT, UDP_PORT);
@@ -83,8 +112,13 @@ int main()
     /* Main loop: server loops forever listening for requests */
     for( ; ; )
     {
+		bzero(TCPmessagein, MAX_MESSAGE_LENGTH);
+		bzero(UDPmessagein, MAX_MESSAGE_LENGTH);
+		bzero(TCPmessageout, MAX_MESSAGE_LENGTH);
+		bzero(UDPmessageout, MAX_MESSAGE_LENGTH);
+		
 		/* accept a connection */
-		if( (childsockfd = accept(parentsockfd, NULL, NULL)) == -1 )
+		if((childsockfd = accept(parentsockfd, NULL, NULL)) == -1)
 		{
 			fprintf(stderr, "ERROR: accept() call failed!\n");
 			exit(1);
@@ -107,33 +141,46 @@ int main()
 			close(parentsockfd);
 
 			 /* obtain the message from this client */
-	    while(recv(childsockfd, messagein, MAX_MESSAGE_LENGTH, 0) > 0 )
+	    while(recv(childsockfd, TCPmessagein, MAX_MESSAGE_LENGTH, 0) > 0)
 	    {
+			if(recvfrom(UDPsocket, UDPmessagein, MAX_MESSAGE_LENGTH, 0, (struct sockaddr *) &client, &len) < 0)
+			{
+				printf("ERROR: UDP recvfrom() error!\n");
+				exit(1);
+			}
 			/* print out the received message */
-			printf("Child process received word: %s\n", messagein);
-			
-			printf("That word has %d characters!\n", strlen(messagein));
-			devowel(messagein);
-			printf("The devowled word: %s\n", messagein);
+			printf("Child process received word: %s\n", TCPmessagein);
+			printf("That word has %d characters!\n", strlen(TCPmessagein));
+			devowelTCP(TCPmessagein);
+			devowelUDP(UDPmessagein);
+			printf("The devowled word: %s\n", TCPmessagein);
+			printf("The vowled word: %s\n", UDPmessagein);
 
 			/* create the outgoing message (as an ASCII string) */
-			sprintf(TCPmessageout, "%s\n", messagein);
+			sprintf(TCPmessageout, "%s\n", TCPmessagein);
+			sprintf(UDPmessageout, "%s\n", UDPmessagein);
 
 			#ifdef DEBUG
-			printf("Child about to send message: %s\n", TCPmessageout);
+			printf("Sent %d bytes '%s' to client using TCP\n", strlen(TCPmessageout),TCPmessageout);
+			printf("Sent %d bytes '%s' to client using UDP\n", strlen(UDPmessageout), UDPmessageout);
 			#endif
 
 			/* send the result message back to the client */
 			send(childsockfd, TCPmessageout, strlen(TCPmessageout), 0);
+			
+			sendto(UDPsocket, UDPmessageout, strlen(UDPmessageout), 0, (struct sockaddr *) &client, len);
 
 			/* clear out message strings again to be safe */
-			bzero(messagein, MAX_MESSAGE_LENGTH);
+			bzero(TCPmessagein, MAX_MESSAGE_LENGTH);
 			bzero(TCPmessageout, MAX_MESSAGE_LENGTH);
+			bzero(UDPmessageout, MAX_MESSAGE_LENGTH);
+			bzero(UDPmessagein, MAX_MESSAGE_LENGTH);
 	    }
 
 			/* when client is no longer sending information to us, */
 			/* the socket can be closed and the child process terminated */
 			close(childsockfd);
+			close(UDPsocket);
 			exit(0);
 		} /* end of then part for child */
 		else
@@ -148,49 +195,58 @@ int main()
     }
 }
 
-void devowel(char* message)
+void devowelTCP(char* message)
 {
 	char* iter = message;
-	for(int i = 0; i < strlen(message); i++)
+	iter = strchr(message, 'a');
+	while(iter != NULL)
 	{
-		
+		strncpy(iter, " ", 1);
 		iter = strchr(message, 'a');
-		while(iter != NULL)
-		{
-			strncpy(iter, " ", 1);
-			iter = strchr(message, 'a');
-		}
-		
-		iter = strchr(message, 'e');
-		while(iter != NULL)
-		{
-			strncpy(iter, " ", 1);
-			iter = strchr(message, 'e');
-		}
-		
-		iter = strchr(message, 'i');
-		while(iter != NULL)
-		{
-			strncpy(iter, " ", 1);
-			iter = strchr(message, 'i');
-		}
-		
-		iter = strchr(message, 'o');
-		while(iter != NULL)
-		{
-			strncpy(iter, " ", 1);
-			iter = strchr(message, 'o');
-		}
-		
-		iter = strchr(message, 'u');
-		while(iter != NULL)
-		{
-			strncpy(iter, " ", 1);
-			iter = strchr(message, 'u');
-		}
-			
 	}
 	
+	iter = strchr(message, 'e');
+	while(iter != NULL)
+	{
+		strncpy(iter, " ", 1);
+		iter = strchr(message, 'e');
+	}
+	
+	iter = strchr(message, 'i');
+	while(iter != NULL)
+	{
+		strncpy(iter, " ", 1);
+		iter = strchr(message, 'i');
+	}
+	
+	iter = strchr(message, 'o');
+	while(iter != NULL)
+	{
+		strncpy(iter, " ", 1);
+		iter = strchr(message, 'o');
+	}
+	
+	iter = strchr(message, 'u');
+	while(iter != NULL)
+	{
+		strncpy(iter, " ", 1);
+		iter = strchr(message, 'u');
+	}
+	
+}
+
+void devowelUDP(char* message)
+{
+	char* it = message;
+	for(int i = 0; i < strlen(message) && it != NULL; i++)
+	{
+		if((*it == 'a') || (*it == 'e') || (*it == 'i') || (*it == 'o') || (*it == 'u'))
+			UDPmessagein[vindex] = *it;
+		else
+			UDPmessagein[vindex] = ' ';
+		vindex++;
+		it++;	
+	}
 }
 
 void envowel(char* message)
