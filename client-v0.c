@@ -18,8 +18,8 @@ void perror(const char *s);
 
 // IP address and port of server
 #define SERVER_IP "127.0.0.1"
-#define TCPPORTNUM 44144
-#define UDPPORTNUM 44144
+#define TCPPORTNUM 44145
+#define UDPPORTNUM 44145
 
 /* Manifest constants used by client program */
 #define MAX_HOSTNAME_LENGTH 64

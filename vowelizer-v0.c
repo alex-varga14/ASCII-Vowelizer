@@ -8,8 +8,8 @@
 
 /* Global manifest constants */
 #define MAX_MESSAGE_LENGTH 100
-#define TCP_PORT 44144  
-#define UDP_PORT 44144
+#define TCP_PORT 44145
+#define UDP_PORT 44145
 //#define SMPL 1
 #define DEVOWEL "Devowel"
 
@@ -22,6 +22,7 @@ int childsockfd;
 char UDPmessagein[MAX_MESSAGE_LENGTH];
 int vindex = 0;
 char advancedMessage[MAX_MESSAGE_LENGTH];
+char advancedMessageUDP[MAX_MESSAGE_LENGTH];
 
 /* This is a signal handler to do graceful exit if needed */
 void catcher( int sig )
@@ -33,6 +34,8 @@ void catcher( int sig )
 void devowelTCP(char* message);
 void devowelUDP(char* message);
 void envowel(char* message);  
+char countSpaces(char* message);
+
 
 /* Main program for server */
 int main()
@@ -103,10 +106,10 @@ int main()
     }
 
     /* initialize message strings just to be safe (null-terminated) */
-    bzero(TCPmessagein, MAX_MESSAGE_LENGTH);
-	bzero(UDPmessagein, MAX_MESSAGE_LENGTH);
-    bzero(TCPmessageout, MAX_MESSAGE_LENGTH);
-	bzero(UDPmessageout, MAX_MESSAGE_LENGTH);
+     bzero(TCPmessagein, MAX_MESSAGE_LENGTH);
+	// bzero(UDPmessagein, MAX_MESSAGE_LENGTH);
+     bzero(TCPmessageout, MAX_MESSAGE_LENGTH);
+	// bzero(UDPmessageout, MAX_MESSAGE_LENGTH);
 
     fprintf(stderr, "Hello there! I am the vowelizer server!!\n");
     fprintf(stderr, "I am running on TCP port %d and UDP port %d...\n\n", TCP_PORT, UDP_PORT);
@@ -114,9 +117,9 @@ int main()
     /* Main loop: server loops forever listening for requests */
     for( ; ; )
     {
-		bzero(TCPmessagein, MAX_MESSAGE_LENGTH);
+		//bzero(TCPmessagein, MAX_MESSAGE_LENGTH);
 		bzero(UDPmessagein, MAX_MESSAGE_LENGTH);
-		bzero(TCPmessageout, MAX_MESSAGE_LENGTH);
+		//bzero(TCPmessageout, MAX_MESSAGE_LENGTH);
 		bzero(UDPmessageout, MAX_MESSAGE_LENGTH);
 		
 		/* accept a connection */
@@ -157,19 +160,20 @@ int main()
 			// {
 				devowelTCP(TCPmessagein);
 				devowelUDP(UDPmessagein);
+#ifdef SMPL
 				printf("The devowled word: %s\n", TCPmessagein);
 				printf("The vowled word: %s\n", UDPmessagein);
-			// }
-			// else
-			// {
-				//envowel(TCPmessagein, UDPmessagein);
-				//printf("The envowled word: %s\n", UDPmessagein);
-			//}
-				
+				/* create the outgoing message (as an ASCII string) */
+				sprintf(TCPmessageout, "%s\n", TCPmessagein);
+				sprintf(UDPmessageout, "%s\n", UDPmessagein);
+#else
+				printf("The devowled word: %s\n", advancedMessage);
+				printf("The vowled word: %s\n", advancedMessageUDP);
+				/* create the outgoing message (as an ASCII string) */
+				sprintf(TCPmessageout, "%s\n", advancedMessage);
+				sprintf(UDPmessageout, "%s\n", advancedMessageUDP);
+#endif
 
-			/* create the outgoing message (as an ASCII string) */
-			sprintf(TCPmessageout, "%s\n", TCPmessagein);
-			sprintf(UDPmessageout, "%s\n", UDPmessagein);
 
 			#ifdef DEBUG
 			printf("Sent %ld bytes '%s' to client using TCP\n", strlen(TCPmessageout),TCPmessageout);
@@ -206,11 +210,14 @@ int main()
     }
 }
 
+char countSpaces(char* message)
+{
+}
+
 void devowelTCP(char* message)
 {
-	printf("Dugged\n");
 #ifdef SMPL
-	printf("Dugged1\n");
+	printf("SIMPLE:\n");
 	char* iter = message;
 	iter = strchr(message, 'a');
 	while(iter != NULL)
@@ -247,29 +254,59 @@ void devowelTCP(char* message)
 		iter = strchr(message, 'u');
 	}
 #else
-	printf("Dugged2\n");
-	const char* start = message;
+	printf("ADVANCED:\n");
 	char* it = message;
 	char* iter = message;
-	int l = 0;
-	while(it != NULL)
+	int len = 0;
+	for(int i = 0; i < strlen(message) && it != NULL; i++)
 	{
-		printf("Dugged2.5\n");
-		if((*it != 'a') && (*it != 'A') && (*it != 'e') && (*it != 'E') && (*it != 'o') && (*it != 'O') && (*it != 'I') && (*it != 'i') && (*it != 'u') && (*it != 'U'))
+		if((*it != 'a') && (*it != 'e') && (*it != 'i') && (*it != 'o') && (*it != 'u'))
 		{
-			printf("Dugged2.55\n");
-			strncpy(iter, *it, 1);
-			//advancedMessage[l] = *it;
-			//l++;
-			iter++;
-			printf("Dugged2.555\n");
+			advancedMessage[len] = *it;
+			len++;
 		}
-		it++;
+		if((*it == 'a') || (*it == 'e') || (*it == 'i') || (*it == 'o') || (*it == 'u'))
+			UDPmessagein[vindex] = *it;
+		else
+			UDPmessagein[vindex] = ' ';
+		vindex++;
+		it++;	
 	}
-	*(iter++) = '\0';
-	
-	//message = advancedMessage;
-	printf("Dugged3\n");
+	int udplen = 0;
+	printf("The WORD: %s\n", UDPmessagein);
+	for(int i = 0; i < strlen(UDPmessagein); i++)
+	{
+		if(UDPmessagein[i] == ' ')
+		{
+			printf("1 SPACE: %c\n", UDPmessagein[i]);
+			if(UDPmessagein[i+1] == ' ')
+			{
+				printf("2 SPACE: %c\n", UDPmessagein[i]);
+				if(UDPmessagein[i+2] == ' ')
+				{
+					printf("3 SPACE: %c\n", UDPmessagein[i]);
+					advancedMessageUDP[udplen] = '3';
+					i = i + 2;
+				}
+				else
+				{
+					advancedMessageUDP[udplen] = '2';
+					i = i + 1;
+				}
+			}
+			else
+			{
+				advancedMessageUDP[udplen] = '1';
+			}
+		}
+		else
+		{
+			advancedMessageUDP[udplen] = UDPmessagein[i];
+		}
+		udplen++;
+	}
+	advancedMessage[len] = '\0';
+	advancedMessageUDP[len] = '\0';
 #endif
 	
 }
@@ -295,5 +332,10 @@ void devowelUDP(char* message)
 
 void envowel(char* message)
 {
+#ifdef SMPL
+
+#else
+	
+#endif
 
 }	
